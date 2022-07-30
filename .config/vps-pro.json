@@ -1,0 +1,9 @@
+{
+  "MultiRandomServeNodes": "33300-33400,10,http://",
+  "HeartArgs": {
+    "pppInterval":60,
+    "netDev":"ppp0",
+    "maxIpErrCount":15,
+    "ManagerAddr":"iiots.oicp.io:32223"
+  }
+}

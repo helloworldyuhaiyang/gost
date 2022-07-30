@@ -1,0 +1,9 @@
+{
+  "MultiRandomServeNodes": "33300-33400,10,http://",
+  "HeartArgs": {
+    "pppInterval":15,
+    "netDev":"en0",
+    "maxIpErrCount":15,
+    "ManagerAddr":"127.0.0.1:9998"
+  }
+}

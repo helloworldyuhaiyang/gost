@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"github.com/ginuerzh/gost/heart"
 	"io/ioutil"
 	"net"
 	"net/url"
@@ -22,7 +23,17 @@ var (
 type baseConfig struct {
 	route
 	Routes []route
-	Debug  bool
+
+	Heart     bool
+	HeartArgs *heart.Args
+
+	Debug bool
+}
+
+func newBaseConfig() *baseConfig {
+	return &baseConfig{
+		HeartArgs: heart.NewHeartArgs(),
+	}
 }
 
 func parseBaseConfig(s string) (*baseConfig, error) {

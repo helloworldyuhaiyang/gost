@@ -5,11 +5,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/ginuerzh/gost/heart"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"runtime"
-
-	_ "net/http/pprof"
 
 	"github.com/ginuerzh/gost"
 	"github.com/go-log/log"
@@ -17,18 +17,22 @@ import (
 
 var (
 	configureFile string
-	baseCfg       = &baseConfig{}
+	baseCfg       *baseConfig
 	pprofAddr     string
 	pprofEnabled  = os.Getenv("PROFILING") != ""
 )
 
-func init() {
+func Init() {
 	gost.SetLogger(&gost.LogLogger{})
 
 	var (
 		printVersion bool
 	)
 
+	baseCfg = newBaseConfig()
+
+	flag.BoolVar(&baseCfg.Heart, "H", false, "heart to server")
+	flag.StringVar(&baseCfg.MultiRandomServeNodes, "MR", "", "multiple random port server")
 	flag.Var(&baseCfg.route.ChainNodes, "F", "forward address, can make a forward chain")
 	flag.Var(&baseCfg.route.ServeNodes, "L", "listen address, can listen on multiple ports (required)")
 	flag.IntVar(&baseCfg.route.Mark, "M", 0, "Specify out connection mark")
@@ -61,6 +65,7 @@ func init() {
 }
 
 func main() {
+	Init()
 	if pprofEnabled {
 		go func() {
 			log.Log("profiling server on", pprofAddr)
@@ -117,6 +122,24 @@ func start() error {
 	}
 	for i := range routers {
 		go routers[i].Serve()
+	}
+
+	// report heart
+	if baseCfg.Heart {
+		{
+			for _, router := range routers {
+				baseCfg.HeartArgs.ReportPorts = append(baseCfg.HeartArgs.ReportPorts, router.GetPort())
+			}
+			newHeart := heart.NewHeart(baseCfg.HeartArgs)
+			err := newHeart.Init()
+			if err != nil {
+				return err
+			}
+			err = newHeart.Start()
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil

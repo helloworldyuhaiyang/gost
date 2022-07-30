@@ -5,10 +5,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"math/rand"
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,11 +30,12 @@ func (l *stringList) Set(value string) error {
 }
 
 type route struct {
-	ServeNodes stringList
-	ChainNodes stringList
-	Retries    int
-	Mark       int
-	Interface  string
+	MultiRandomServeNodes string
+	ServeNodes            stringList
+	ChainNodes            stringList
+	Retries               int
+	Mark                  int
+	Interface             string
 }
 
 func (r *route) parseChain() (*gost.Chain, error) {
@@ -89,6 +93,120 @@ func (r *route) parseChain() (*gost.Chain, error) {
 	}
 
 	return chain, nil
+}
+
+// 33220-33211,10,http://
+func (r *route) parseMultiRandomServer() {
+	strs := strings.SplitN(r.MultiRandomServeNodes, ",", 3)
+
+	//fmt.Sprintf("%v", strs)
+
+	if len(strs) != 3 {
+		fmt.Println("MR parse args invalid")
+		return
+	}
+
+	portRange, err := parsePortRange(strs[0])
+	if err != nil {
+		fmt.Println("MR parse args invalid")
+		return
+	}
+	count, err := strconv.Atoi(strs[1])
+	if err != nil {
+		fmt.Println("MR parse args invalid")
+		return
+	}
+
+	ports, err := randomPort(portRange.Min, portRange.Max, count)
+	if err != nil {
+		panic(err)
+	}
+	// make ServeNodes
+	for _, port := range ports {
+		serverInfo := fmt.Sprintf("%s:%d", strs[2], port)
+		r.ServeNodes = append(r.ServeNodes, serverInfo)
+	}
+}
+
+// PortRange specifies the range of port, such as 1000-2000.
+type PortRange struct {
+	Min, Max int
+}
+
+// parsePortRange parses the s to a PortRange.
+// The s may be a '*' means 0-65535.
+func parsePortRange(s string) (*PortRange, error) {
+	if s == "*" {
+		return &PortRange{Min: 0, Max: 65535}, nil
+	}
+
+	minmax := strings.Split(s, "-")
+	switch len(minmax) {
+	case 1:
+		port, err := strconv.Atoi(s)
+		if err != nil {
+			return nil, err
+		}
+		if port < 0 || port > 65535 {
+			return nil, fmt.Errorf("invalid port: %s", s)
+		}
+		return &PortRange{Min: port, Max: port}, nil
+	case 2:
+		min, err := strconv.Atoi(minmax[0])
+		if err != nil {
+			return nil, err
+		}
+		max, err := strconv.Atoi(minmax[1])
+		if err != nil {
+			return nil, err
+		}
+
+		realmin := maxint(0, minint(min, max))
+		realmax := minint(65535, maxint(min, max))
+
+		return &PortRange{Min: realmin, Max: realmax}, nil
+	default:
+		return nil, fmt.Errorf("invalid range: %s", s)
+	}
+}
+
+func minint(x, y int) int {
+	if x < y {
+		return x
+	}
+	return y
+}
+
+func maxint(x, y int) int {
+	if x > y {
+		return x
+	}
+	return y
+}
+
+func randomPort(start, end, count int) (ports []int, err error) {
+	rLen := end - start
+	if rLen < 0 || rLen < count {
+		return nil, errors.New("invalid args")
+	}
+
+	rand.Seed(time.Now().UnixNano())
+
+	// make hash table
+	table := make([]int, rLen)
+	for i := 0; start+i < end; i++ {
+		table[i] = start + i
+	}
+
+	// random port
+	for len(ports) < count {
+		rIndex := rand.Intn(len(table))
+		ports = append(ports, table[rIndex])
+		table = append(table[:rIndex], table[rIndex+1:]...)
+		continue
+	}
+
+	return
 }
 
 func parseChainNode(ns string) (nodes []gost.Node, err error) {
@@ -337,6 +455,9 @@ func parseChainNode(ns string) (nodes []gost.Node, err error) {
 }
 
 func (r *route) GenRouters() ([]router, error) {
+	// random Server
+	r.parseMultiRandomServer()
+
 	chain, err := r.parseChain()
 	if err != nil {
 		return nil, err
@@ -687,4 +808,10 @@ func (r *router) Close() error {
 		return nil
 	}
 	return r.server.Close()
+}
+
+func (r *router) GetPort() int {
+	_, p, _ := net.SplitHostPort(r.server.Addr().String())
+	atoi, _ := strconv.Atoi(p)
+	return atoi
 }
