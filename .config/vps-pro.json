@@ -1,5 +1,5 @@
 {
-  "MultiRandomServeNodes": "33300-33400,10,http://",
+  "MultiRandomServeNodes": "33300-33400,3,http://",
   "HeartArgs": {
     "pppInterval":60,
     "netDev":"ppp0",
