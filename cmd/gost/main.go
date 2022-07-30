@@ -32,7 +32,7 @@ func Init() {
 	baseCfg = newBaseConfig()
 
 	flag.BoolVar(&baseCfg.Heart, "H", false, "heart to server")
-	flag.StringVar(&baseCfg.MultiRandomServeNodes, "MR", "", "multiple random port server")
+	flag.StringVar(&baseCfg.MultiRandomServeNodes, "MR", "", "multiple random port server, eg: 33300-33400,3,http://")
 	flag.Var(&baseCfg.route.ChainNodes, "F", "forward address, can make a forward chain")
 	flag.Var(&baseCfg.route.ServeNodes, "L", "listen address, can listen on multiple ports (required)")
 	flag.IntVar(&baseCfg.route.Mark, "M", 0, "Specify out connection mark")
