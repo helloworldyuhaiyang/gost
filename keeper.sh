@@ -21,11 +21,11 @@ monitor() {
   then
   	DATE=$(date)
   	echo "[$DATE] proc[$proc_name] dead, do restart..."
-  	"${proc_bin}" "${agrs}" >> "${proc_dir}"/"${proc_bin}".log 2>&1 &
+  	"${proc_bin}" ${agrs} >> "${proc_dir}"/"${proc_bin}".log 2>&1 &
   fi
 
 
   return 0
 }
 
-monitor /root/vps-client/gost-linux-amd64 -C=/root/vps-client/config/vps.json
+monitor /root/vps-client/gost-linux-amd64 "-C=/root/vps-client/config/vps.json -H=true"
