@@ -4,6 +4,6 @@
     "pppInterval":15,
     "netDev":"en0",
     "maxIpErrCount":15,
-    "ManagerAddr":"127.0.0.1:9998"
+    "ManagerAddr":"127.0.0.1:32223"
   }
 }

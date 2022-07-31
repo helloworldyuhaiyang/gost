@@ -2,8 +2,12 @@ package heart
 
 import (
 	"bytes"
+	"context"
+	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
+	qg "github.com/lucas-clemente/quic-go"
 	"net"
 	"os"
 	"os/exec"
@@ -61,8 +65,10 @@ type Heart struct {
 
 	// report 的 lock
 	reportMutex sync.Mutex
-	// 客户端
-	conn net.Conn
+	// quic 客户端
+	sess qg.Session
+	// 上次使用的 quic stream
+	sendStream qg.SendStream
 }
 
 func NewHeart(cfg *Args) *Heart {
@@ -77,6 +83,10 @@ func (h *Heart) Name() string {
 }
 
 func (h *Heart) Init() error {
+	if h.cfg.PppInterval < 5 {
+		return errors.New("pppInterval lt 5s")
+	}
+
 	return nil
 }
 
@@ -106,8 +116,8 @@ func (h *Heart) Start() error {
 
 func (h *Heart) StopGracefully(wait time.Duration) error {
 	h.stopChan <- struct{}{}
-	if h.conn != nil {
-		err := h.conn.Close()
+	if h.sess != nil {
+		err := h.sess.CloseWithError(qg.ApplicationErrorCode(0), "closed")
 		if err != nil {
 			return err
 		}
@@ -138,7 +148,7 @@ func (h *Heart) restartPPPoe() (err error) {
 type Package struct {
 	HostName string
 	Ip       string
-	Ports    []int
+	Port     int
 	DeadLine int64
 }
 
@@ -160,14 +170,16 @@ func (h *Heart) reportHeart(deadLine int64) {
 	h.getIpErrCount = 0
 
 	// 上报 心跳
-	pack := &Package{
-		Ip:       ip,
-		HostName: h.cfg.HostName,
-		Ports:    h.cfg.ReportPorts,
-		DeadLine: deadLine,
-	}
+	for _, po := range h.cfg.ReportPorts {
+		pack := &Package{
+			Ip:       ip,
+			HostName: h.cfg.HostName,
+			Port:     po,
+			DeadLine: deadLine,
+		}
 
-	h.sendPack(pack)
+		h.sendPack(pack)
+	}
 }
 
 func (h *Heart) getIp() (ip string, err error) {
@@ -194,21 +206,30 @@ func (h *Heart) runCmd(cmd *exec.Cmd) (res string, err error) {
 	return cmdBuffer.String(), err
 }
 
-func (h *Heart) connectToManager() error {
-	conn, err := net.Dial("tcp", h.cfg.ManagerAddr)
+func (h *Heart) connectManager() error {
+	tlsConf := &tls.Config{
+		InsecureSkipVerify: h.cfg.InsecureSkipVerify,
+		//Certificates: "./config/mangu-server.crt",
+		NextProtos: h.cfg.NextProtos,
+	}
+	conn, err := qg.DialAddr(h.cfg.ManagerAddr, tlsConf, nil)
 	if err != nil {
 		return err
 	}
 
-	h.conn = conn
+	h.sess = conn
+
+	timeCtx, cancel := context.WithTimeout(context.Background(), time.Second*4)
+	defer cancel()
+
+	h.sendStream, err = h.sess.OpenUniStreamSync(timeCtx)
 	return nil
 }
-
 func (h *Heart) sendPack(p *Package) {
-	if h.conn == nil {
-		err := h.connectToManager()
+	if h.sess == nil || h.sendStream == nil {
+		err := h.connectManager()
 		if err != nil {
-			log.Logf("connectToManager error, err:%v", err)
+			log.Logf("connectManager error, err:%v", err)
 			return
 		}
 	}
@@ -218,25 +239,25 @@ func (h *Heart) sendPack(p *Package) {
 
 	sendNum := 0
 	for true {
-		_, err := h.conn.Write(data)
+		_, err := h.sendStream.Write(data)
 		if err == nil {
 			break
 		}
 		// 重连
-		sendNum++
-		time.Sleep(time.Second * time.Duration(sendNum))
-		if err = h.connectToManager(); err != nil {
-			log.Logf("heart failed, connectToManager error, err:%v\n", err)
+		if err = h.connectManager(); err != nil {
+			log.Logf("heart failed, connectManager error, err:%v\n", err)
 		} else {
-			log.Logf("reconnect successful\n")
+			log.Logf("reconnetc successful\n")
 		}
+		sendNum++
 		if sendNum > 3 {
 			log.Logf("send failed, sendNum:%d\n", sendNum)
+			time.Sleep(time.Second * time.Duration(sendNum))
 			return
 		}
 	}
 
-	log.Logf("send successful, pack: %v", string(data[:len(data)-1]))
+	log.Logf("send succ, pack: %v", string(data[:len(data)-1]))
 	return
 }
 
