@@ -247,7 +247,7 @@ func (h *Heart) sendPack(p *Package) {
 		if err = h.connectManager(); err != nil {
 			log.Logf("heart failed, connectManager error, err:%v\n", err)
 		} else {
-			log.Logf("reconnetc successful\n")
+			log.Logf("reconnect successful\n")
 		}
 		sendNum++
 		if sendNum > 3 {
